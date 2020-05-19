@@ -27,14 +27,14 @@ LOCAL_SRC_FILES := \
     HDMIAudioOutput.cpp \
     AudioHardwareInput.cpp \
     AudioStreamIn.cpp \
-    AudioHotplugThread.cpp
+    AudioHotplugThread.cpp \
+    LinearTransform.cpp
 
 LOCAL_C_INCLUDES := \
     external/tinyalsa/include \
     $(call include-path-for, audio-utils)
 
 LOCAL_SHARED_LIBRARIES := \
-    libcommon_time_client \
     libcutils \
     liblog \
     libutils \
@@ -46,7 +46,7 @@ LOCAL_SHARED_LIBRARIES := \
 
 # until remotecontrolservice is added to PDK, don't include
 # this in aosp_fugu builds.  only use in regular fugu builds.
-ifeq ($(TARGET_PRODUCT),fugu)
+ifneq ($(filter fugu fugu_gmscore_next, $(TARGET_PRODUCT)),)
 LOCAL_C_INCLUDES += \
     vendor/google_athome/services/RemoteControlService/include
 
@@ -60,6 +60,8 @@ LOCAL_STATIC_LIBRARIES += libmedia_helper
 
 LOCAL_MODULE := libatv_audio
 LOCAL_MODULE_TAGS := optional
+
+LOCAL_CFLAGS += -Werror
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -85,8 +87,10 @@ LOCAL_SHARED_LIBRARIES := \
     libatv_audio
 
 LOCAL_MODULE := audio.primary.fugu
-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
+
+LOCAL_CFLAGS += -Werror
 
 include $(BUILD_SHARED_LIBRARY)
 
@@ -114,7 +118,7 @@ LOCAL_C_INCLUDES := \
     $(TOPDIR)frameworks/av/services/audiopolicy/common/managerdefinitions/include \
     $(TOPDIR)frameworks/av/services/audiopolicy/engine/interface
 
-ifeq ($(TARGET_PRODUCT),fugu)
+ifneq ($(filter fugu fugu_gmscore_next, $(TARGET_PRODUCT)),)
 LOCAL_C_INCLUDES += \
     vendor/google_athome/services/RemoteControlService/include
 
@@ -126,5 +130,7 @@ endif
 
 LOCAL_MODULE := libaudiopolicymanager
 LOCAL_MODULE_TAGS := optional
+
+LOCAL_CFLAGS += -Werror
 
 include $(BUILD_SHARED_LIBRARY)

@@ -219,33 +219,6 @@ void HDMIAudioCaps::reset_l() {
     mModes.clear();
 }
 
-void HDMIAudioCaps::getRatesForAF(String8& rates) {
-    Mutex::Autolock _l(mLock);
-    rates.clear();
-
-    // If the sink does not support basic audio, then it supports no audio.
-    if (!mBasicAudioSupported)
-        return;
-
-    // Basic audio always supports from 32k through 38k.
-    uint32_t tmp = kSR_32000 | kSR_44100 | kSR_48000;
-
-    // To keep things simple, only report mode information for the PCM mode
-    // which supports the maximum number of channels.
-    ssize_t ndx = getMaxChModeNdx_l();
-    if (ndx >= 0)
-        tmp |= mModes[ndx].sr_bitmask;
-
-    bool first = true;
-    for (uint32_t i = 1; tmp; i <<= 1) {
-        if (i & tmp) {
-            rates.appendFormat(first ? "%d" : "|%d", srMaskToSR(i));
-            first = false;
-            tmp &= ~i;
-        }
-    }
-}
-
 void HDMIAudioCaps::getFmtsForAF(String8& fmts) {
     Mutex::Autolock _l(mLock);
     fmts.clear();
@@ -256,11 +229,11 @@ void HDMIAudioCaps::getFmtsForAF(String8& fmts) {
         return;
     }
 
+    // These names must match formats in android.media.AudioFormat
     fmts.append("AUDIO_FORMAT_PCM_16_BIT|AUDIO_FORMAT_PCM_8_24_BIT");
     // TODO: when we can start to expect 20 and 24 bit audio modes coming from
     // AF, we need to implement support to enumerate those modes.
 
-    // These names must match formats in android.media.AudioFormat
     for (size_t i = 0; i < mModes.size(); ++i) {
         switch (mModes[i].fmt) {
             case kFmtAC3:
@@ -279,6 +252,8 @@ void HDMIAudioCaps::getFmtsForAF(String8& fmts) {
                 break;
         }
     }
+    // HDMI supports IEC61937 S/PDIF audio wrapper.
+    fmts.append("|AUDIO_FORMAT_IEC61937");
 
 #if ALSA_UTILS_PRINT_FORMATS
     ALOGI("ALSAFORMATS: formats = %s", fmts.string());
@@ -314,29 +289,117 @@ void HDMIAudioCaps::getFmtsForAF(String8& fmts) {
 #endif /* ALSA_UTILS_PRINT_FORMATS */
 }
 
-void HDMIAudioCaps::getChannelMasksForAF(String8& masks) {
+/* static */
+HDMIAudioCaps::AudFormat HDMIAudioCaps::alsaFormatFromAndroidFormat(audio_format_t format)
+{
+    AudFormat alsaFormat = kFmtInvalid;
+    switch (audio_get_main_format(format)) {
+        case AUDIO_FORMAT_PCM: alsaFormat = kFmtLPCM; break;
+        case AUDIO_FORMAT_AC3: alsaFormat = kFmtAC3; break;
+        case AUDIO_FORMAT_E_AC3: alsaFormat = kFmtAC3; break; // FIXME should this be kFmtEAC3?
+        case AUDIO_FORMAT_DTS: alsaFormat = kFmtDTS; break;
+        case AUDIO_FORMAT_DTS_HD: alsaFormat = kFmtDTSHD; break;
+        case AUDIO_FORMAT_IEC61937: alsaFormat = kFmtLPCM; break;
+        default:
+            ALOGE("supportsFormat() says format %#x not supported", format);
+            break;
+    }
+    return alsaFormat;
+}
+
+const HDMIAudioCaps::Mode *HDMIAudioCaps::getModeForFormat(HDMIAudioCaps::AudFormat format)
+{
+    for (size_t i = 0; i < mModes.size(); ++i) {
+        if (mModes[i].fmt == format) {
+            return &mModes[i];
+        }
+    }
+    return nullptr;
+}
+
+void HDMIAudioCaps::getRatesForAF(String8& rates, audio_format_t format) {
     Mutex::Autolock _l(mLock);
-    masks.clear();
+    rates.clear();
 
     // If the sink does not support basic audio, then it supports no audio.
     if (!mBasicAudioSupported)
         return;
 
-    masks.append("AUDIO_CHANNEL_OUT_STEREO");
+    uint32_t tmp = 0;
+    // No format provided: returns rates for format with max channels
+    if (format == AUDIO_FORMAT_INVALID) {
+        ssize_t ndx = getMaxChModeNdx_l();
+        if (ndx >= 0)
+            tmp = mModes[ndx].sr_bitmask;
+    } else {
+        AudFormat alsaFormat = alsaFormatFromAndroidFormat(format);
+        if (alsaFormat == kFmtInvalid) {
+            return;
+        }
+        const Mode *mode =  getModeForFormat(alsaFormat);
+        if (mode == nullptr) {
+            return;
+        }
+        tmp = mode->sr_bitmask;
+    }
+    bool first = true;
+    for (uint32_t i = 1; tmp; i <<= 1) {
+        if (i & tmp) {
+            rates.appendFormat(first ? "%d" : "|%d", srMaskToSR(i));
+            first = false;
+            tmp &= ~i;
+        }
+    }
+}
 
-    // To keep things simple, only report mode information for the mode
-    // which supports the maximum number of channels.
-    ssize_t ndx = getMaxChModeNdx_l();
-    if (ndx < 0)
+void HDMIAudioCaps::getChannelMasksForAF(String8& masks, audio_format_t format) {
+    Mutex::Autolock _l(mLock);
+    masks.clear();
+    const Mode *mode = nullptr;
+
+    // If the sink does not support basic audio, then it supports no audio.
+    if (!mBasicAudioSupported)
         return;
 
-    if (mModes[ndx].max_ch >= 6) {
-        if (masks.length())
-            masks.append("|");
+    if (format == AUDIO_FORMAT_INVALID) {
+        // To keep things simple, only report mode information for the mode
+        // which supports the maximum number of channels.
+        ssize_t ndx = getMaxChModeNdx_l();
+        if (ndx < 0)
+            return;
+        mode = &mModes[ndx];
+    } else {
+        AudFormat alsaFormat = alsaFormatFromAndroidFormat(format);
+        if (alsaFormat == kFmtInvalid) {
+            return;
+        }
+        mode = getModeForFormat(alsaFormat);
+        if (mode == nullptr) {
+            return;
+        }
+    }
 
-        masks.append((mModes[ndx].max_ch >= 8)
-                ? "AUDIO_CHANNEL_OUT_5POINT1|AUDIO_CHANNEL_OUT_7POINT1"
-                : "AUDIO_CHANNEL_OUT_5POINT1");
+    if (mode != nullptr) {
+        // allow mono for non-pcm formats, e.g. AC3
+        if (mode->max_ch >= 1 && mode->fmt != kFmtLPCM) {
+            masks.append("AUDIO_CHANNEL_OUT_MONO");
+        }
+        if (mode->max_ch >= 2) {
+            if (masks.length()) masks.append("|");
+            masks.append("AUDIO_CHANNEL_OUT_STEREO");
+        }
+        if (mode->max_ch >= 4) {
+            if (masks.length()) masks.append("|");
+            masks.append("AUDIO_CHANNEL_OUT_QUAD");
+        }
+        if (mode->max_ch >= 6) {
+            if (masks.length()) masks.append("|");
+            masks.append("AUDIO_CHANNEL_OUT_5POINT1");
+        }
+        if (mode->max_ch >= 8) {
+            if (masks.length()) masks.append("|");
+            masks.append("AUDIO_CHANNEL_OUT_7POINT1");
+        }
     }
 }
 
@@ -366,15 +429,11 @@ bool HDMIAudioCaps::supportsFormat(audio_format_t format,
     if (!mBasicAudioSupported)
         return false;
 
-    AudFormat alsaFormat;
-    switch (format & AUDIO_FORMAT_MAIN_MASK) {
-        case AUDIO_FORMAT_PCM: alsaFormat = kFmtLPCM; break;
-        case AUDIO_FORMAT_AC3: alsaFormat = kFmtAC3; break;
-        case AUDIO_FORMAT_E_AC3: alsaFormat = kFmtAC3; break; // FIXME should this be kFmtEAC3?
-        case AUDIO_FORMAT_DTS: alsaFormat = kFmtDTS; break;
-        case AUDIO_FORMAT_DTS_HD: alsaFormat = kFmtDTSHD; break;
-        default: return false;
-    }
+    AudFormat alsaFormat = alsaFormatFromAndroidFormat(format);
+    if (alsaFormat == kFmtInvalid)
+        return false;
+
+    isIec958NonAudio |= (format == AUDIO_FORMAT_IEC61937);
 
     // EAC3 uses a PCM sample rate of 4X the base rate.
     // We try to detect that situation and allow 4X rate even if the
@@ -403,14 +462,17 @@ bool HDMIAudioCaps::supportsFormat(audio_format_t format,
 
     // if PCM then determine actual bits per sample.
     if (alsaFormat == kFmtLPCM) {
-        uint32_t subFormat = format & AUDIO_FORMAT_SUB_MASK;
         BPSMask bpsMask;
-        switch (subFormat) {
+        switch (format) {
         // FIXME: (legacy code). We match on 16 bits, but on Fugu we hard code to use
         // PCM_FORMAT_S24_LE.
-            case AUDIO_FORMAT_PCM_SUB_16_BIT: // fall through
-            case AUDIO_FORMAT_PCM_SUB_8_24_BIT: bpsMask = kBPS_16bit; break;
-            default: return false;
+            case AUDIO_FORMAT_PCM_16_BIT: // fall through
+            case AUDIO_FORMAT_PCM_8_24_BIT:
+            case AUDIO_FORMAT_IEC61937:
+                bpsMask = kBPS_16bit;
+                break;
+            default:
+                return false;
         }
 
         // Is the caller requesting basic audio?  If so, we should be good to go.

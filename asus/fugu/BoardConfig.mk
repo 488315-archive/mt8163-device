@@ -30,6 +30,9 @@ TARGET_BOARD_PLATFORM := moorefield
 TARGET_BOOTLOADER_BOARD_NAME := fugu
 TARGET_USERIMAGES_USE_EXT4 := true
 BOARD_SYSTEMIMAGE_PARTITION_SIZE := 1073741824
+BOARD_SYSTEMIMAGE_JOURNAL_SIZE := 0
+# as of 3562118, inode usage was 2149, use 4096 to be safe
+BOARD_SYSTEMIMAGE_EXTFS_INODE_COUNT := 4096
 BOARD_FLASH_BLOCK_SIZE := 2048
 
 BOARD_CACHEIMAGE_PARTITION_SIZE := 260014080
@@ -37,8 +40,7 @@ BOARD_CACHEIMAGE_PARTITION_SIZE := 260014080
 TARGET_DROIDBOOT_LIBS := libintel_droidboot
 TARGET_RECOVERY_PIXEL_FORMAT := "RGBX_8888"
 
-# Use dlmalloc
-MALLOC_IMPL := dlmalloc
+MALLOC_SVELTE := true
 
 # Kernel cmdline
 BOARD_KERNEL_CMDLINE := pci=noearly vmalloc=256M ptrace.ptrace_can_access=1
@@ -46,22 +48,10 @@ BOARD_KERNEL_CMDLINE += earlyprintk=nologger loglevel=8
 BOARD_KERNEL_CMDLINE += androidboot.hardware=fugu androidboot.serialno=01234567890123456789
 BOARD_KERNEL_CMDLINE += snd_pcm.maximum_substreams=8
 BOARD_KERNEL_CMDLINE += intel_soc_pmu.enable_s3=0
-
-# Custom dumpstate library to add board specific stuff to bugreport
-BOARD_HAL_STATIC_LIBRARIES := libdumpstate.fugu
+BOARD_KERNEL_CMDLINE += loop.max_part=7
 
 # Binder API version
 TARGET_USES_64_BIT_BINDER := true
-
-# Enable dex-preoptimization to speed up first boot sequence
-ifeq ($(HOST_OS),linux)
-  ifeq ($(TARGET_BUILD_VARIANT),user)
-    ifeq ($(WITH_DEXPREOPT),)
-      WITH_DEXPREOPT := true
-    endif
-  endif
-endif
-DONT_DEXPREOPT_PREBUILTS := true
 
 # Security
 BUILD_WITH_SECURITY_FRAMEWORK := chaabi_token
@@ -91,6 +81,10 @@ HWUI_IMG_FBO_CACHE_OPTIM := true
 TARGET_SUPPORT_HDMI_PRIMARY := true
 BOARD_USES_LIBDRM := true
 
+TARGET_USES_HWC2 := true
+NUM_FRAMEBUFFER_SURFACE_BUFFERS := 3
+SF_START_GRAPHICS_ALLOCATOR_SERVICE := true
+
 # Audio
 BOARD_USES_ALSA_AUDIO := true
 BOARD_USES_TINY_ALSA_AUDIO := true
@@ -100,19 +94,6 @@ VSYNC_EVENT_PHASE_OFFSET_NS := 7500000
 SF_VSYNC_EVENT_PHASE_OFFSET_NS := 5000000
 
 BOARD_EGL_CFG := device/asus/fugu/egl.cfg
-
-ADDITIONAL_DEFAULT_PROPERTIES += \
-    ro.opengles.version = 196609 \
-    ro.hwui.drop_shadow_cache_size = 4.0 \
-    ro.hwui.gradient_cache_size = 0.8 \
-    ro.hwui.layer_cache_size = 32.0 \
-    ro.hwui.path_cache_size = 24.0 \
-    ro.hwui.text_large_cache_width = 2048 \
-    ro.hwui.text_large_cache_height = 1024 \
-    ro.hwui.text_small_cache_width = 1024 \
-    ro.hwui.text_small_cache_height = 512 \
-    ro.hwui.texture_cache_flushrate = 0.4 \
-    ro.hwui.texture_cache_size = 48.0 \
 
 MAX_EGL_CACHE_ENTRY_SIZE := 65536
 MAX_EGL_CACHE_SIZE := 1048576
@@ -136,11 +117,6 @@ MFX_IPP := p8
 
 # Video Post Processing
 TARGET_HAS_ISV := true
-ADDITIONAL_DEFAULT_PROPERTIES += \
-    persist.intel.isv.vpp = 1 \
-    persist.intel.isv.frc = 1
-
-COMMON_GLOBAL_CFLAGS += -DGFX_BUF_EXT
 
 OVERRIDE_RS_DRIVER := libPVRRS.so
 
@@ -162,3 +138,13 @@ BOARD_SEPOLICY_DIRS += device/asus/fugu/sepolicy
 
 # Recipes to generate prebuilts
 -include device/intel/common/external/external.mk
+
+# Don't dex preopt prebuilt apps that will be updated from Play Store
+DONT_DEXPREOPT_PREBUILTS := true
+
+# Don't uncompress dex files in priv apps APKs to save on space.
+DONT_UNCOMPRESS_PRIV_APPS_DEXS := true
+
+# Vendor Interface Manifest
+DEVICE_MANIFEST_FILE := device/asus/fugu/manifest.xml
+DEVICE_MATRIX_FILE := device/asus/fugu/compatibility_matrix.xml
