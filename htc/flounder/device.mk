@@ -17,6 +17,7 @@
 PRODUCT_PACKAGES := \
     libwpa_client \
     hostapd \
+    wificond \
     wpa_supplicant \
     wpa_supplicant.conf
 
@@ -73,7 +74,6 @@ PRODUCT_COPY_FILES += \
 PRODUCT_PACKAGES += \
     libwpa_client \
     hostapd \
-    dhcpcd.conf \
     wpa_supplicant \
     wpa_supplicant.conf
 
@@ -100,6 +100,7 @@ PRODUCT_COPY_FILES += \
     frameworks/native/data/etc/android.hardware.audio.pro.xml:system/etc/permissions/android.hardware.audio.pro.xml \
     frameworks/native/data/etc/android.hardware.nfc.xml:system/etc/permissions/android.hardware.nfc.xml \
     frameworks/native/data/etc/android.hardware.nfc.hce.xml:system/etc/permissions/android.hardware.nfc.hce.xml \
+    frameworks/native/data/etc/android.hardware.nfc.hcef.xml:system/etc/permissions/android.hardware.nfc.hcef.xml \
     frameworks/native/data/etc/android.hardware.bluetooth.xml:system/etc/permissions/android.hardware.bluetooth.xml \
     frameworks/native/data/etc/android.hardware.bluetooth_le.xml:system/etc/permissions/android.hardware.bluetooth_le.xml \
     frameworks/native/data/etc/android.hardware.opengles.aep.xml:system/etc/permissions/android.hardware.opengles.aep.xml \
@@ -167,7 +168,7 @@ PRODUCT_COPY_FILES += \
     device/htc/flounder/nfc/libnfc-brcm.conf:system/etc/libnfc-brcm.conf \
     device/htc/flounder/nfc/libnfc-brcm-20795a10.conf:system/etc/libnfc-brcm-20795a10.conf
 
-PRODUCT_AAPT_CONFIG := normal large xlarge hdpi xhdpi xxhdpi
+PRODUCT_AAPT_CONFIG := normal large xlarge
 PRODUCT_AAPT_PREF_CONFIG := xhdpi
 
 PRODUCT_CHARACTERISTICS := tablet,nosdcard
@@ -187,6 +188,12 @@ PRODUCT_PACKAGES += \
     nfc_nci.bcm2079x.default \
     NfcNci \
     Tag \
+    android.hardware.nfc@1.0-impl
+
+# Bluetooth HAL
+PRODUCT_PACKAGES += \
+    libbt-vendor \
+    android.hardware.bluetooth@1.0-impl
 
 PRODUCT_PACKAGES += \
     librs_jni \
@@ -195,7 +202,9 @@ PRODUCT_PACKAGES += \
 PRODUCT_PACKAGES += \
     power.flounder \
     lights.flounder \
-    sensors.flounder
+    sensors.flounder \
+    thermal.flounder \
+    hwcomposer.flounder
 
 # Filesystem management tools
 PRODUCT_PACKAGES += \
@@ -219,11 +228,15 @@ PRODUCT_PROPERTY_OVERRIDES := \
     ro.hwui.disable_scissor_opt=true \
     ro.bt.bdaddr_path=/sys/module/flounder_bdaddress/parameters/bdaddress \
     ro.frp.pst=/dev/block/platform/sdhci-tegra.3/by-name/PST \
+    ro.product.first_api_level=23 \
     ro.ril.def.agps.mode=1 \
     persist.tegra.compositor=glcomposer
 
 # setup dalvik vm configs.
 $(call inherit-product, frameworks/native/build/tablet-10in-xhdpi-2048-dalvik-heap.mk)
+# N9 has only two CPUs, so drop dex2oat pressure after boot at runtime
+PRODUCT_PROPERTY_OVERRIDES += \
+    dalvik.vm.dex2oat-threads=1
 
 # for off charging mode
 PRODUCT_PACKAGES += \
@@ -236,8 +249,7 @@ PRODUCT_PACKAGES += \
     audio.a2dp.default \
     audio.usb.default \
     audio.r_submix.default \
-    libhtcacoustic \
-    libnvvisualizer
+    libhtcacoustic
 PRODUCT_PROPERTY_OVERRIDES += \
     ro.audio.monitorRotation=true
 
@@ -262,6 +274,17 @@ PRODUCT_DEFAULT_PROPERTY_OVERRIDES += \
 PRODUCT_PROPERTY_OVERRIDES += \
     af.fast_track_multiplier=1 \
     audio_hal.period_size=128
+
+# In userdebug, add minidebug info the the boot image and the system server to support
+# diagnosing native crashes.
+ifneq (,$(filter userdebug, $(TARGET_BUILD_VARIANT)))
+    # Boot image.
+    PRODUCT_DEX_PREOPT_BOOT_FLAGS += --generate-mini-debug-info
+    # System server and some of its services.
+    # Note: we cannot use PRODUCT_SYSTEM_SERVER_JARS, as it has not been expanded at this point.
+    $(call add-product-dex-preopt-module-config,services,--generate-mini-debug-info)
+    $(call add-product-dex-preopt-module-config,wifi-service,--generate-mini-debug-info)
+endif
 
 # add verity dependencies
 $(call inherit-product, build/target/product/verity.mk)
