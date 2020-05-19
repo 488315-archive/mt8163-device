@@ -22,4 +22,12 @@
     <!-- Disable KeyguardSerivce -->
     <bool name="config_enableKeyguardService">false</bool>
 
+    <!-- Package names to be blacklisted in Recents -->
+    <string-array name="recents_tv_blacklist_array">
+        <item>com.google.android.tv.remote.service</item>
+        <item>com.google.android.apps.mediashell</item>
+    </string-array>
+
+    <!-- Svelte specific logic, see RecentsConfiguration.SVELTE_* constants. -->
+    <integer name="recents_svelte_level">3</integer>
 </resources>
