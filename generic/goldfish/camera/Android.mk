@@ -12,35 +12,47 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+ifneq ($(filter generic_x86 generic_x86_64 generic generic_arm64 generic_x86_arm, $(TARGET_DEVICE)),)
 
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
 
-LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_CFLAGS += -fno-short-enums -DQEMU_HARDWARE
-LOCAL_CFLAGS += -Wno-unused-parameter -Wno-missing-field-initializers
-LOCAL_CLANG_CFLAGS += -Wno-c++11-narrowing
-LOCAL_SHARED_LIBRARIES:= \
+# Emulator camera module########################################################
+
+emulator_camera_module_relative_path := hw
+emulator_camera_cflags := -fno-short-enums -DQEMU_HARDWARE
+emulator_camera_cflags += -Wno-unused-parameter -Wno-missing-field-initializers
+emulator_camera_clang_flags := -Wno-c++11-narrowing
+emulator_camera_shared_libraries := \
     libbinder \
+    libexif \
     liblog \
     libutils \
     libcutils \
-    libcamera_client \
+    libEGL \
+    libGLESv1_CM \
+    libGLESv2 \
     libui \
-    libdl
+    libdl \
+    libjpeg \
+    libcamera_metadata \
+    libhardware
 
-# JPEG conversion libraries and includes.
-LOCAL_SHARED_LIBRARIES += \
-	libjpeg \
-	libcamera_metadata
+emulator_camera_static_libraries := \
+	android.hardware.camera.common@1.0-helper \
+	libyuv_static
 
-LOCAL_C_INCLUDES += external/jpeg \
+emulator_camera_c_includes := external/libjpeg-turbo \
+	external/libexif \
+	external/libyuv/files/include \
 	frameworks/native/include/media/hardware \
-	$(LOCAL_PATH)/../opengl/system/OpenglSystemCommon \
+	$(LOCAL_PATH)/../include \
+	$(LOCAL_PATH)/../../goldfish-opengl/system/OpenglSystemCommon \
+	$(LOCAL_PATH)/../../goldfish-opengl/shared/OpenglCodecCommon \
 	$(call include-path-for, camera)
 
-LOCAL_SRC_FILES := \
+emulator_camera_src := \
 	EmulatedCameraHal.cpp \
 	EmulatedCameraFactory.cpp \
 	EmulatedCameraHotplugThread.cpp \
@@ -51,6 +63,7 @@ LOCAL_SRC_FILES := \
 		EmulatedQemuCameraDevice.cpp \
 		EmulatedFakeCamera.cpp \
 		EmulatedFakeCameraDevice.cpp \
+		EmulatedFakeRotatingCameraDevice.cpp \
 		Converters.cpp \
 		PreviewWindow.cpp \
 		CallbackNotifier.cpp \
@@ -63,9 +76,29 @@ LOCAL_SRC_FILES := \
 		fake-pipeline2/Sensor.cpp \
 		fake-pipeline2/JpegCompressor.cpp \
 	EmulatedCamera3.cpp \
-		EmulatedFakeCamera3.cpp
+		EmulatedFakeCamera3.cpp \
+		EmulatedQemuCamera3.cpp \
+		qemu-pipeline3/QemuSensor.cpp \
+	Exif.cpp \
+	Thumbnail.cpp \
+	WorkerThread.cpp \
 
-ifeq ($(TARGET_PRODUCT),vbox_x86)
+
+# Emulated camera - goldfish / vbox_x86 build###################################
+
+LOCAL_VENDOR_MODULE := true
+LOCAL_MODULE_RELATIVE_PATH := ${emulator_camera_module_relative_path}
+LOCAL_CFLAGS := ${emulator_camera_cflags}
+LOCAL_CLANG_CFLAGS += ${emulator_camera_clang_flags}
+
+LOCAL_SHARED_LIBRARIES := ${emulator_camera_shared_libraries}
+LOCAL_STATIC_LIBRARIES := ${emulator_camera_static_libraries}
+LOCAL_C_INCLUDES += ${emulator_camera_c_includes}
+LOCAL_SRC_FILES := ${emulator_camera_src}
+
+ifeq ($(TARGET_BOARD_PLATFORM),brilloemulator)
+LOCAL_MODULE := camera.$(TARGET_BOARD_PLATFORM)
+else ifeq ($(TARGET_PRODUCT),vbox_x86)
 LOCAL_MODULE := camera.vbox_x86
 else
 LOCAL_MODULE := camera.goldfish
@@ -73,30 +106,25 @@ endif
 
 include $(BUILD_SHARED_LIBRARY)
 
-#################################################################
-ifneq ($(TARGET_BUILD_PDK),true)
+# Emulator camera - ranchu build################################################
 
-include $(CLEAR_VARS)
+include ${CLEAR_VARS}
 
-LOCAL_MODULE_RELATIVE_PATH := hw
-LOCAL_CFLAGS += -fno-short-enums -DQEMU_HARDWARE
-LOCAL_CFLAGS += -Wno-unused-parameter
-LOCAL_CLANG_CFLAGS += -Wno-c++11-narrowing
-LOCAL_SHARED_LIBRARIES:= \
-    libcutils \
-    liblog \
-    libskia \
-    libandroid_runtime
+LOCAL_VENDOR_MODULE := true
+LOCAL_MODULE_RELATIVE_PATH := ${emulator_camera_module_relative_path}
+LOCAL_CFLAGS := ${emulator_camera_cflags}
+LOCAL_CLANG_CFLAGS += ${emulator_camera_clang_flags}
 
-LOCAL_C_INCLUDES += external/jpeg \
-                    external/skia/include/core/ \
-                    frameworks/base/core/jni/android/graphics \
-                    frameworks/native/include
+LOCAL_SHARED_LIBRARIES := ${emulator_camera_shared_libraries}
+LOCAL_STATIC_LIBRARIES := ${emulator_camera_static_libraries}
+LOCAL_C_INCLUDES += ${emulator_camera_c_includes}
+LOCAL_SRC_FILES := ${emulator_camera_src}
 
-LOCAL_SRC_FILES := JpegStub.cpp
-
-LOCAL_MODULE := camera.goldfish.jpeg
+LOCAL_MODULE := camera.ranchu
 
 include $(BUILD_SHARED_LIBRARY)
 
-endif # !PDK
+# Build all subdirectories #####################################################
+include $(call all-makefiles-under,$(LOCAL_PATH))
+
+endif

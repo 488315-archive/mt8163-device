@@ -4,6 +4,12 @@
 ifconfig eth0 10.0.2.15 netmask 255.255.255.0 up
 route add default gw 10.0.2.2 dev eth0
 
+wifi=`getprop ro.kernel.qemu.wifi`
+case "$wifi" in
+    1) /system/bin/init.wifi.sh
+       ;;
+esac
+
 # ro.kernel.android.qemud is normally set when we
 # want the RIL (radio interface layer) to talk to
 # the emulated modem through qemud.
@@ -66,3 +72,6 @@ case "$my_ip" in
     *) ifconfig eth1 "$my_ip" netmask 255.255.255.0 up
     ;;
 esac
+
+# take the wake lock
+echo "emulator_wake_lock" > /sys/power/wake_lock
